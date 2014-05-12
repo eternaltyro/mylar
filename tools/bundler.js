@@ -172,7 +172,7 @@ var Fiber = require('fibers');
 var Future = require(path.join('fibers', 'future'));
 var sourcemap = require('source-map');
 
-//For Mylar
+// For Mylar
 var sjcl = require('./sjcl.js');
 
 // files to ignore when bundling. node has no globs, so use regexps
