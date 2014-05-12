@@ -738,11 +738,10 @@ generate_princ_keys = function(cb) {
        using password and provides it to cb as argument.
        It does not change the DB at the server. */
     Principal.rewrappedKey = function(uname, password, cb) {
-
 	Principal.lookupUser(uname, function(userprinc) {
 	    userprinc.load_secret_keys(function(uprinc) {
 		var ukeys = serialize_keys(uprinc.keys)
-		cb && cb(sjcl.encrypt(password, ukeys));
+		cb && cb(sjcl.encrypt(password, wrap_message(uprinc)));
 	    });
 	});
 
