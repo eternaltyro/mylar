@@ -66,7 +66,7 @@ Follow the steps:
 
 2. Secure it with Mylar:
 
-First, read the Mylar paper and make sure you understand the section "Building a Mylar application".
+First, read the [Mylar paper](http://css.csail.mit.edu/mylar/mylar.pdf) and make sure you understand the section "Building a Mylar application".
 
 2.a. in model.js, annotate which fields are sensitive and should be encrypted
     For example, to encrypt the field "message" of the collection "Messages", do:
