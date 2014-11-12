@@ -10,14 +10,14 @@ Package.on_use(function (api, where) {
     api.use(['underscore', 'json', 'ejson', 'minimongo', 'templating',
              'timing', 'basic-crypto', 'http', 'principal'], where);
   
-    api.add_files(['search.js', 'crypto_server.js'], where);
+    api.add_files(['b64.js', 'search.js', 'crypto_server.js'], where);
 
 //    api.add_files('crypto_plugin.html', 'client');
     api.add_files('crypto_plugin.js', 'client');
 
     api.export("MylarCrypto");
     api.export("MYLAR_USE_SEARCH");
-        
+    api.export("enc_fire");
     if(USE_NACL){
       // What a hack!  Extract source_root via the exception string.
       var source_root;

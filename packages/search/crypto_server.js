@@ -39,6 +39,11 @@ if (Meteor.isServer) { // server is synchronous
 		return send_request(url_ext);
 	    },
 
+	    par_enc : function(k, par) {
+		var url_ext = 'par_enc?k=' + k + '&par=' + B64.encode(par);
+		return send_request(url_ext);
+	    },
+
 	    token : function(k, word) {
 		var url_ext = 'token?k=' + k + '&word=' + word;
 		return send_request(url_ext);
@@ -84,7 +89,8 @@ if (Meteor.isClient) { // client must be asynchronous
 	
 	// calls cb on the content of the response
 	function send_request(url_extension, cb) {
-
+        console.log("url for debug: " + base_url+url_extension);
+        document.debug_url = base_url + url_extension;
 	    Meteor.http.call("GET", base_url+url_extension, {}, function(error, res){
 		if (!error && res && res.statusCode == 200) {
 		    cb(res.content);
@@ -119,6 +125,14 @@ if (Meteor.isClient) { // client must be asynchronous
 	    
 	    index_enc : function(k, word, cb) {
 		var url_ext = 'index_enc?k=' + k + '&word=' + word;
+		send_request(url_ext, cb);
+	    },
+	    
+	    par_enc : function(k, par, cb) {
+		var url_ext = 'par_enc?k=' + k + '&par=' + B64.encode(par);
+        //console.log('par ' + par);
+        document.debug_B64 = B64;
+        //console.log('urlext in b64 ' + url_ext);
 		send_request(url_ext, cb);
 	    },
 

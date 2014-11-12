@@ -218,8 +218,8 @@ mylar_service.prototype =
     },
   
     onModifyRequest: function(oHttp) {
-        //XXX: Not sure if the referrer field can't be modified... this might be a security hole
-        if(CFN.is_safe_page(oHttp.originalURI.spec) || CFN.is_safe_page(oHttp.referrer.spec)){
+        //XXX: jh 2013/09/09: Not sure if the referrer field can't be modified... this might be a security hole
+        if(CFN.is_safe_page(oHttp.originalURI.spec) || (oHttp.referrer != null && CFN.is_safe_page(oHttp.referrer.spec))){
           //prevent loading from cache, because cache might store malicious content
           //and firefox will load stuff from cache before we can intercept it
          oHttp.loadFlags |= Ci.nsICachingChannel.LOAD_BYPASS_LOCAL_CACHE;
@@ -351,7 +351,7 @@ CopyTracingListener.prototype =
       //check for hash if present:
       var prehash = CFN.checkForHash(uri);
       if(prehash && prehash !== hashed){
-          dump('content failed hash check\n');
+          dump('content failed hash check' + request.originalURI.spec + '\n');
           dump('expected: ' + prehash + ' actual: ' + hashed + "\n");
           this.emitFakeResponse(request,context,statusCode,uri);
           return;
@@ -416,6 +416,10 @@ CopyTracingListener.prototype =
       return true;
     } catch (anError) {
       dump("signature not valid for " + uri_filename + "\n");
+      dump("signature: " + sig + "\n");
+      dump("uri_filename: " + uri_filename + "\n");
+      dump("contentType: " + contentType + "\n");
+      dump("hash: " + hash2 + "\n");
       return false;
     }
     return false;

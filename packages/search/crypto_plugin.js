@@ -33,7 +33,7 @@ setup_crypto = function(){
 	return;
     }
   
-    console.log("creating document");
+    //console.log("creating document");
     var fire_div = document.createElement('div');
     fire_div.id = "_cryptoFIREWrapper";
     
@@ -87,6 +87,8 @@ MylarCrypto.keygen = function(cb) {
     var enc_fire_e = enc_fire();
     if (enc_fire_e && enc_fire_e.valid)
         cb(enc_fire_e.Keygen());
+    else if(typeof EncApp != 'undefined')
+	enc_return(EncApp.keygen());
     else
         enc_module.postMessage("keygen()");
 };
@@ -103,6 +105,8 @@ MylarCrypto.delta = function(k1, k2, cb) {
     var enc_fire_e = enc_fire();
     if(enc_fire_e && enc_fire_e.valid)
         cb(enc_fire_e.Delta(k1, k2));
+    else if(typeof EncApp != 'undefined')
+	enc_return(EncApp.delta(k1, k2));
     else
         enc_module.postMessage("delta(" + k1 + "," + k2 + ")");
 };
@@ -119,6 +123,8 @@ MylarCrypto.token = function(k, word, cb) {
     var enc_fire_e = enc_fire();
     if(enc_fire_e && enc_fire_e.valid)
         cb(enc_fire_e.Token(k, word));
+    else if(typeof EncApp != 'undefined')
+	enc_return(EncApp.token(k, word));
     else
         enc_module.postMessage("token(" + k + "," + word + ")");
 };
@@ -135,6 +141,8 @@ MylarCrypto.encrypt = function(k, word, cb) {
     var enc_fire_e = enc_fire();
     if (enc_fire_e && enc_fire_e.valid)
         cb(enc_fire_e.Encrypt(k, word));
+    else if(typeof EncApp != 'undefined')
+	enc_return(EncApp.encrypt(k, word));
     else
         enc_module.postMessage("encrypt(" +  k + "," + word + ")");
 };
@@ -152,6 +160,8 @@ MylarCrypto.index_enc = function(k, word, cb) {
     var enc_fire_e = enc_fire();
     if (enc_fire_e && enc_fire_e.valid) {
 	cb(enc_fire_e.IndexEnc(k, word));
+    } else if(typeof EncApp != 'undefined') {
+	enc_return(EncApp.index_enc(k, word));
     } else {
 	enc_module.postMessage("index_enc(" +  k + "," + word + ")");
     }
@@ -175,6 +185,9 @@ var tokenize_for_search = function(text) {
     return res;
 }
 
+
+// encrypts a text
+// calls cb on random value and ciphertext - a list
 MylarCrypto.text_encrypt = function(k, ptext, cb) {
     setup_crypto();
 
@@ -195,6 +208,63 @@ MylarCrypto.text_encrypt = function(k, ptext, cb) {
 	    callback();
 	});
     });    
+}
+
+// calls cb with a string that contains
+// b64 enc strings separated by space
+function par_enc(k, ptext, cb) {
+    enc_return = cb;
+    if (USE_CRYPTO_SERVER) {
+	crypto_server.par_enc(k, ptext, cb);
+	return;
+    }
+    
+    var enc_fire_e = enc_fire();
+    if (enc_fire_e && enc_fire_e.valid)
+        cb(enc_fire_e.ParEnc(k, ptext));
+    else
+	throw new Error("paragraph encryption only supported by crypto server and encfire");
+}
+
+function split_by_space(str) {
+    var str_list = str.split(" ");
+
+    var new_list = [];
+    for (i = 0; i < str_list.length; i++) {
+	if (str_list[i] && str_list[i].length > 0) {
+	    new_list.push(str_list[i]);
+	}
+    }
+
+    return new_list;
+}
+
+// encrypts a text
+// same as text_encrypt, but faster because it sends all text to
+// the low-level crypto directly
+// calls cb on random value and ciphertext
+MylarCrypto.paragraph_encrypt = function(k, ptext, cb) {
+    setup_crypto();
+
+    var r = sjcl.codec.hex.fromBits(sjcl.random.randomWords(2));
+    
+    var callback = function(ciph) {
+	// ciph should be a string formed of b64 encoded
+	// strings split by space
+	//console.log("this is ciph " + ciph);
+	var ciph_list = split_by_space(ciph);
+	//console.log("After splitting by space " + JSON.stringify(ciph_list));
+	var encitems = [];
+
+	// hash with randomness
+	_.each(ciph_list, function(encitem, index){
+	    encitems[index] = base_crypto.mkhash(r, encitem); 
+	});
+
+	cb(r, encitems);
+    }
+
+    par_enc(k, ptext, callback);
 }
 
 
@@ -245,6 +315,8 @@ MylarCrypto.adjust = function(tok, delta, cb) {
     var enc_fire_e = enc_fire();
     if (enc_fire_e && enc_fire_e.valid)
         cb(enc_fire_e.Adjust(tok, delta));
+    else if(typeof EncApp != 'undefined')
+	enc_return(EncApp.adjust(tok, delta));
     else
         enc_module.postMessage("adjust(" + tok + "," + delta + ")");
 };
@@ -262,6 +334,8 @@ MylarCrypto.match = function(tok, cipher, cb) {
     var enc_fire_e = enc_fire();
     if (enc_fire_e && enc_fire_e.valid)
         cb(enc_fire_e.Match(tok, cipher));
+    else if(typeof EncApp != 'undefined')
+	enc_return(EncApp.match(tok, cipher));
     else
         enc_module.postMessage("match(" + tok + "," + cipher + ")");
 };

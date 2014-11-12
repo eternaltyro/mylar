@@ -118,7 +118,12 @@ wrapped_keys = function() {
     return res;
 }
 
+// takes as input a principal or a string
 pretty = function(princ) {
+
+    if (typeof princ == "string") {
+	return princ;
+    }
     var res = "";
     
     if (!princ) {
@@ -259,6 +264,8 @@ if (Meteor.isServer) {
                         subject_name: princattr.name,
 			signer : princid
                     }).fetch();
+		    console.log("looking for name " + princattr.name + " signed by " + princid);
+		    console.log("found " + cs.length);
 		    // add each certificate to new_princs
                     _.each(cs, function (cert) {
 			var new_lst = cert_lst.slice(0);
@@ -354,13 +361,13 @@ if (Meteor.isClient) {
 	    throw new Error("cannot create principal with invalid (type, name) "
 			    + type + ", " + name);
 	}
-
+	
 	var p = new Principal(type, name, deserialize_keys(keys));
 	
 	if (!p._has_secret_keys()) {
 	    throw new Error("cannot create static principal without its public keys");
 	}
-
+	
 	cache_add(p);
 	
 	var pt = PrincType.findOne({type: type, name:name});
@@ -368,9 +375,13 @@ if (Meteor.isClient) {
 	    PrincType.insert({type:type, name:name});
 	    Principal._store(p, null, true);
 	}
-
-	Principal.add_access(creator, p,
-			     function(){cb && cb(p);});
+	
+	if (creator) {
+	    Principal.add_access(creator, p,
+				 function(){cb && cb(p);});
+	}
+	
+	return p;
     }
     
     /*
@@ -381,6 +392,35 @@ if (Meteor.isClient) {
 	return new Principal(type, name, deserialize_keys(keys));
     }
 
+    function wrap_message(princ) {
+	return JSON.stringify({
+	    msg : 'wrapkeys',
+	    name : princ.name,
+	    keys : serialize_keys(princ.keys)
+	});
+    }
+    // returns a string which is the wrapped principal princ
+    // under the password 
+    Principal.wrap = function(password, princ) {
+	return sjcl.encrypt(password, wrap_message(princ));
+    }
+
+    // returns serialized keys of the principal wrapped in wrap
+    // with password
+    Principal.unwrap = function(password, wrap, uname) {
+	var unwrapped = JSON.parse(sjcl.decrypt(password, wrap));
+	if (unwrapped.msg != "wrapkeys") {
+	    throw new Error("invalid wrapped key");
+	}
+	if (unwrapped.name != uname) {
+	    throw new Error("uname in unwrapped key does not match");
+	}
+
+	return unwrapped.keys;
+	
+    }
+
+    
 
 
 // generates keys: standard crypto + multi-key
@@ -564,18 +604,19 @@ generate_princ_keys = function(cb) {
     // returns true if it has all secret keys
     // throws exception if it only has a subset of the secret keys
     Principal.prototype._has_secret_keys = function() {
-	var self = this;
-	if (!self.keys) {
-	    return false;
-	}
-	if (self.keys.decrypt && self.keys.sign &&
-	    (!use_search() || self.keys.mk_key) && self.keys.sym_key) {
-	    return true;
-	}
-	if (self.keys.decrypt || self.keys.sign || (use_search() && self.keys.mk_key) || self.keys.sym_key) {
-	    throw new Error("principal " + princ.id + " type " + princ.type + " has partial secret keys" );
-	}
-	return false;
+        var self = this;
+        if (!self.keys) {
+            return false;
+        }
+        if (self.keys.decrypt && self.keys.sign &&
+            (!use_search() || self.keys.mk_key) && self.keys.sym_key) {
+            return true;
+        }
+        if (self.keys.decrypt || self.keys.sign || (use_search() && self.keys.mk_key) || self.keys.sym_key) {
+          throw new Error("principal " + self.id + " type " + self.type
+			  + " has partial secret keys" + serialize_keys(self.keys));
+        }
+        return false;
     }
     // loads secret keys for the principal self.id
     // by finding a chain to the current user and decrypts the secret keys
@@ -697,11 +738,10 @@ generate_princ_keys = function(cb) {
        using password and provides it to cb as argument.
        It does not change the DB at the server. */
     Principal.rewrappedKey = function(uname, password, cb) {
-
 	Principal.lookupUser(uname, function(userprinc) {
 	    userprinc.load_secret_keys(function(uprinc) {
 		var ukeys = serialize_keys(uprinc.keys)
-		cb && cb(sjcl.encrypt(password, ukeys));
+		cb && cb(sjcl.encrypt(password, wrap_message(uprinc)));
 	    });
 	});
 
@@ -754,38 +794,60 @@ generate_princ_keys = function(cb) {
     /*
      Takes as input a list of PrincAttrs, and the username of a user -- authority
      and outputs a principal for attrs[0].
-     The principal does not have secret keys loaded. 
+     The principal does not have secret keys loaded.
+     Authority is either a string representing the name of a user,
+     or an object representing a principal.
+     TODO: needs cleanup, authority should always be principal, IDP or static
     */
     Principal.lookup = function (attrs, authority, on_complete) {
 
 	startTime("lookup");
 
-	var p = cache_get_certif(attrs, authority);
-	if (p) {
-	    endTime("lookup");
-	    on_complete(p);
-	    return;
-	} else {
-	    if (debug) console.log("MISS");
+	if (typeof authority == "string") {
+	    var p = cache_get_certif(attrs, authority);
+	    if (p) {
+		endTime("lookup");
+		on_complete(p);
+		return;
+	    } else {
+		if (debug) console.log("MISS");
+	    }
 	}
+
+	// looks up the principal corresponding to authority
+	// and calls cb with it
+	var lookupAuthority = function(authority, cb) {
+	    if (typeof authority == "string") {
+		Principal.lookupUser(authority, cb);
+	    } else {
+		if (!authority.id)
+		    throw new Error("authority in lookup must be principal or string ");
+		cb(authority);
+	    }
+	}
+
 	
 	if (debug)
-	    console.log("Principal.lookup: " + authority + " attrs[0]: " + attrs[0].type + "=" + attrs[0].name);
+	    console.log("Principal.lookup: " + pretty(authority) + " attrs[0]: " + attrs[0].type + "=" + attrs[0].name);
+
+
 	
-	Principal.lookupUser(authority, function (auth_princ) {
+	lookupAuthority(authority, function (auth_princ) {
 	    if (!auth_princ) {
-		throw new Error("idp did not find user " + authority);
+		throw new Error("idp did not find user for " + pretty(authority));
 	    }
 	    var auth_id =  auth_princ.id;
 
 	    Meteor.call("lookup", attrs, auth_id, function (err, result) {
 	
                 if (err || !result) {
-                    throw new Error("Principal lookup fails");
+                    throw new Error("Principal lookup fails for authority " + pretty(authority));
                 }
 	
                 var princ = result.principal;
                 var certs = result["cert"];
+
+		
 		
 	        var cert_attrs = _.zip(certs, attrs);
 	        var princ_keys = deserialize_keys(princ);
@@ -818,7 +880,8 @@ generate_princ_keys = function(cb) {
 			if (debug) console.log("chain verifies");
 			princ = new Principal(attrs[0].type, attrs[0].name, princ_keys);
 			princ._load_secret_keys(function(){
-			    cache_add(princ, {'uname': authority});
+			    if (typeof authority == "string") //TODO: this cache must check it is for users, else insecure
+				cache_add(princ, {'uname': authority});
 			    endTime("lookup");
 			    on_complete && on_complete(princ);   
 			}, true);

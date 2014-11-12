@@ -33,7 +33,9 @@ EncChat$ /path/to/mylar/meteor mongo
 
 You should see a field "message_enc" that contains the encryption of the message. There should be no field "message", which before contained the unencrypted data. You can also see "roomprinc", which is the principal for the room that the message is encrypted for.
 
+If you open a developer console in the client browser, issue Messages.find({}).fetch() and examine the results, you will see the unencrypted ``message'' field, which is only accessible to the client browser!
 
+You can also use tcpdump to check that the client browser only sends encrypted messages to the server!
 
 ## Cleanup
 
@@ -49,6 +51,8 @@ In order to use the search plugin, you'll need to build it for your system using
 You should navigate to enc_modules/crypto_fire and follow the README there in order to set it up.
 In addition, there is a binary that works on some systems in the enc_modules/crypto_fire/Binaries/ folder, which you should copy to:
 $(HOME)/.mozilla/plugins/, creating the plugins folder if necessary.
+
+The plugin has been tested to work on 32 and 64-bit distributions of Linux and on Mac OS X.
 
 2. add the search package to the application
 EncChat$ /path/to/mylar add search

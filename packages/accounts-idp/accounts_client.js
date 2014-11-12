@@ -1,16 +1,18 @@
-var current_pw = null;
-
 function check_is_email (email) {
     
     return email && email.indexOf('@') != -1;
 }
 
-function create_user_princ(uname) {
+function create_user_princ(uname, password) {
     var u = Meteor.user();
-    if (u && u._wrap_privkey && current_pw) {
-	var keys = sjcl.decrypt(current_pw, u._wrap_privkey);
-	Principal.set_current_user_keys(keys, uname);
-    }  
+    if (u) {
+	if (u._wrap_privkey && password) {
+	    var keys = Principal.unwrap(password, u._wrap_privkey, uname);
+	    Principal.set_current_user_keys(keys, uname);
+	} else {
+	    throw new Error("user does not have wrapped private keys in local collection");
+	}
+    } 
 }
 
 
@@ -22,39 +24,48 @@ Meteor.onCreatePrincipal = function (f) {
 };
 
 var createUserOrig = Accounts.createUser;
+
+// if auth_princ is specified as part of options,
+// it gets access to new principal as well as certifies it
 Accounts.createUser = function (options, callback) {
+  
+  if (!options.email) {
+    throw new Error("need to specify user email for accounts-idp2");
+  }
+  
+  var uname = options.email || options.username;
+  
+  if (!options.password) {
+    throw new Error("need to specify password");
+  }
+  
+  var password = options.password;
+  if (typeof password != 'string'){
+    throw new Error("password input to Accounts.createUser must be string");
+  }
+  
+  var auth = options.auth_princ;
+  if (options.auth_princ)
+    delete options.auth_princ;
+  
+  Principal.create('user', uname, auth, function (uprinc) {
+    createPrincipalCB(uprinc, function () {
+      var ukeys = serialize_keys(uprinc.keys);
+      
+      if (!options.suppressLogin)
+	Principal.set_current_user_keys(ukeys, uname);
+      
+      options = _.clone(options);
+      options._princ_name = uname;
+      options.wrap_privkeys = Principal.wrap(password, uprinc);
+      options.public_keys = serialize_public(uprinc.keys);
 
-    if (!options.email) {
-	throw new Error("need to specify user email for accounts-idp2");
-    }
-
-    var uname = options.email || options.username;
-
-    if (!options.password) {
-	throw new Error("need to specify password");
-    }
-    
-    var password = options.password;
-    current_pw = password;
-
-    Principal.create('user', uname, null, function (uprinc) {
-	createPrincipalCB(uprinc, function () {
-	    var ukeys = serialize_keys(uprinc.keys);
-
-	    if (!options.suppressLogin)
-		Principal.set_current_user_keys(ukeys, uname);
-	    
-	    options = _.clone(options);
-	    options._princ_name = uname;
-	    options.wrap_privkeys = sjcl.encrypt(password, ukeys);
-	    options.public_keys = serialize_public(uprinc.keys);
-
-	    createUserOrig(options, function(err) {
-		callback(err, uprinc);
-	    });
-	    
-	});
+      createUserOrig(options, function(err) {
+	callback(err, uprinc);
+      });
+      
     });
+  });
 };
 
 // calls cb with error or undefined, if no error
@@ -98,7 +109,6 @@ var loginWithPasswordOrig = Meteor.loginWithPassword;
    selector must be either an email address
    or an object with an email field.*/
 Meteor.loginWithPassword = function (selector, password, cb) {
-    current_pw = password;
 
     if (!selector) {
 	throw new Error("must specify selector");
@@ -122,7 +132,7 @@ Meteor.loginWithPassword = function (selector, password, cb) {
     // prepare callback: when done with login, set user principal
     // before calling user callback
     callback = function(err) {
-	create_user_princ(email);
+	create_user_princ(email, password);
 	cb && cb(err);
     }    
     

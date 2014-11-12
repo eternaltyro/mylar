@@ -119,7 +119,7 @@ var htmlAttributes = function (template, request) {
     if (attribute !== null && attribute !== undefined && attribute !== '')
       attributes += ' ' + attribute;
   });
-  return template.replace('##HTML_ATTRIBUTES##', attributes);
+  return template.replace('<html>', '<html'+attributes+'>');
 };
 WebApp.addHtmlAttributeHook = function (hook) {
   htmlAttributeHooks.push(hook);
@@ -345,9 +345,18 @@ var runWebAppServer = function () {
 
     var request = WebApp.categorizeRequest(req);
 
-    res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
+    res.writeHead(200, {
+        'Content-Type': 'text/html; charset=UTF-8',
+        'Mylar-Signature':clientJson.mylar_signature
+    });
 
-    var requestSpecificHtml = htmlAttributes(boilerplateHtml, request);
+    //XXX Can't allow rewrite with Mylar active attacker. Question is: what did I break?
+    var activeAttackerPackage = Package["active-attacker"];
+    if (!activeAttackerPackage || !activeAttackerPackage.MYLAR_ACTIVE_ATTACKER){
+        var requestSpecificHtml = htmlAttributes(boilerplateHtml, request);
+    } else {
+        var requestSpecificHtml = boilerplateHtml;
+    }
     res.write(requestSpecificHtml);
     res.end();
     return undefined;
@@ -403,20 +412,26 @@ var runWebAppServer = function () {
 
     // Include __meteor_runtime_config__ in the app html, as an inline script if
     // it's not forbidden by CSP.
-    var browserPolicyPackage = Package["browser-policy-common"];
-    if (! browserPolicyPackage ||
-        ! browserPolicyPackage.BrowserPolicy.content ||
-        browserPolicyPackage.BrowserPolicy.content.inlineScriptsAllowed()) {
-      boilerplateHtml = boilerplateHtml.replace(
-          /##RUNTIME_CONFIG##/,
-        "<script type='text/javascript'>__meteor_runtime_config__ = " +
-          JSON.stringify(__meteor_runtime_config__) + ";</script>");
-    } else {
-      boilerplateHtml = boilerplateHtml.replace(
-        /##RUNTIME_CONFIG##/,
-        "<script type='text/javascript' src='##ROOT_URL_PATH_PREFIX##/meteor_runtime_config.js'></script>"
-      );
+    
+    // If active attacker is turned on, bypass this because no dynamic content is allowed.
+    var activeAttackerPackage = Package["active-attacker"];
+    if (!activeAttackerPackage || !activeAttackerPackage.MYLAR_ACTIVE_ATTACKER){
+        var browserPolicyPackage = Package["browser-policy-common"];
+        if (! browserPolicyPackage ||
+            ! browserPolicyPackage.BrowserPolicy.content ||
+            browserPolicyPackage.BrowserPolicy.content.inlineScriptsAllowed()) {
+          boilerplateHtml = boilerplateHtml.replace(
+              /<!-- ##RUNTIME_CONFIG## -->/,
+            "<script type='text/javascript'>__meteor_runtime_config__ = " +
+              JSON.stringify(__meteor_runtime_config__) + ";</script>");
+        } else {
+          boilerplateHtml = boilerplateHtml.replace(
+            /<!-- ##RUNTIME_CONFIG## -->/,
+            "<script type='text/javascript' src='##ROOT_URL_PATH_PREFIX##/meteor_runtime_config.js'></script>"
+          );
+        }
     }
+    //XXX Mylar: ROOT_URL_PATH_PREFIX taken out
     boilerplateHtml = boilerplateHtml.replace(
         /##ROOT_URL_PATH_PREFIX##/g,
       __meteor_runtime_config__.ROOT_URL_PATH_PREFIX || "");
